@@ -15,6 +15,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================================
@@ -400,6 +401,8 @@ model Submission {
   sourceType     String   // latihan / event / marketplace
   jawabanDipilih Json?
   benar          Boolean
+  waktuJawabDetik Int?     // durasi pengerjaan soal ini dalam detik — bahan analisis kecepatan/"working memory" (Engine 2 & 10)
+  jenisKesalahan  String?  // kategori kesalahan bebas, mis. "salah_konsep" / "salah_hitung" / "kehabisan_waktu" (Engine 10 — AI Mentor)
   createdAt      DateTime @default(now())
 
   user           User          @relation(fields: [userId], references: [id])
