@@ -1,14 +1,3 @@
-// backend/prisma/schema.prisma
-// Versi 0.4 — merevisi skema v0.3 (Project Blueprint + Spesifikasi Teknis XP/Challenge)
-// Perubahan utama dari v0.3:
-//   1. Tambah domain baru: User Management & RBAC lanjutan, Notification, File Storage, Audit Log
-//   2. Tambah @relation di semua FK (v0.3 hanya String polos tanpa relasi)
-//   3. Ganti String status bebas -> enum
-//   4. Tambah updatedAt di semua model
-//   5. Tambah @@index pada kombinasi kolom yang sering di-query
-//   6. Tambah deletedAt (soft delete) pada model yang datanya perlu diaudit setelah "dihapus"
-// Lihat spesifikasi-teknis-v0.4-domain-fondasi.md untuk penjelasan tiap keputusan.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -18,9 +7,798 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================
-// 0. DOMAIN BARU — USER MANAGEMENT & RBAC (v0.4 §2)
-// ============================================================
+model School {
+  id        String   @id @default(uuid())
+  npsn      String?  @unique
+  nama      String
+  jenjang   String[]
+  alamat    String?
+  picUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  pic       User?    @relation("SchoolPIC", fields: [picUserId], references: [id])
+  students  User[]   @relation("StudentSchool")
+
+  @@index([npsn])
+}
+
+model User {
+  id                      String                   @id @default(uuid())
+  nama                    String
+  role                    Role
+  adminScope              String[]                 @default([])
+  kontak                  String                   @unique
+  schoolId                String?
+  kelas                   String?
+  jenisKelamin            JenisKelamin?
+  tanggalLahir            DateTime?
+  alamat                  String?
+  consentWa               Boolean                  @default(false)
+  consentData             Boolean                  @default(false)
+  consentGivenAt          DateTime?
+  isActive                Boolean                  @default(true)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  auditLogs               AuditLog[]
+  authCredential          AuthCredential?
+  contentAccess           ContentAccess[]
+  contentComments         ContentComment[]
+  contentRatings          ContentRating[]
+  eventAttempts           EventAttempt[]
+  curatedQuestionPools    EventQuestionPool[]
+  eventRegistrations      EventRegistration[]
+  fileAssets              FileAsset[]
+  leaderboardSnapshots    LeaderboardSnapshot[]
+  learningStyleSurveys    LearningStyleSurvey[]
+  notificationLogs        NotificationLog[]
+  childLinks              ParentChildLink[]        @relation("ChildSide")
+  parentLinks             ParentChildLink[]        @relation("ParentSide")
+  refreshTokens           RefreshToken[]
+  scholarshipApplications ScholarshipApplication[]
+  schoolAsPIC             School[]                 @relation("SchoolPIC")
+  studySessions           StudySession[]
+  submissions             Submission[]
+  talentSummaries         TalentSummaryCache[]
+  transactions            Transaction[]
+  tutorVerifications      TutorProfile[]           @relation("TutorVerifier")
+  tutorProfile            TutorProfile?
+  school                  School?                  @relation("StudentSchool", fields: [schoolId], references: [id])
+  ownedContents           Content[]
+  aktif                   Boolean                  @default(true)
+  email                   String?                  @unique
+  syaratDisetujuiPada     DateTime?
+  psychTestResults        PsychTestResult[]
+  tutorLinksAsTutor TutorStudentLink[] @relation("TutorLinks")
+  tutorLinksAsSiswa TutorStudentLink[] @relation("SiswaLinks")
+
+  @@index([role])
+  @@index([schoolId])
+}
+
+model TutorStudentLink {
+  id        String   @id @default(uuid())
+  tutorId   String
+  siswaId   String
+  tutor     User     @relation("TutorLinks", fields: [tutorId], references: [id])
+  siswa     User     @relation("SiswaLinks", fields: [siswaId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([tutorId, siswaId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model AuthCredential {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  passwordHash String?
+  provider     String    @default("password")
+  providerRef  String?
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ParentChildLink {
+  id         String     @id @default(uuid())
+  parentId   String
+  childId    String
+  status     LinkStatus @default(pending)
+  verifiedBy String?
+  verifiedAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  child      User       @relation("ChildSide", fields: [childId], references: [id])
+  parent     User       @relation("ParentSide", fields: [parentId], references: [id])
+
+  @@unique([parentId, childId])
+  @@index([childId])
+}
+
+model AttemptUnlock {
+  id           String   @id @default(uuid())
+  userId       String
+  eventRoundId String
+  createdAt    DateTime @default(now())
+  createdBy    String
+
+  @@unique([userId, eventRoundId])
+}
+
+model NotificationTemplate {
+  id          String       @id @default(uuid())
+  kode        String       @unique
+  channel     NotifChannel
+  isiTemplate String
+  aktif       Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model NotificationLog {
+  id           String       @id @default(uuid())
+  userId       String
+  templateKode String
+  channel      NotifChannel
+  refType      String?
+  refId        String?
+  payload      Json?
+  status       NotifStatus  @default(pending)
+  errorMessage String?
+  sentAt       DateTime?
+  createdAt    DateTime     @default(now())
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([refType, refId])
+}
+
+model FileAsset {
+  id         String         @id @default(uuid())
+  ownerId    String
+  bucket     String
+  path       String
+  mimeType   String
+  sizeBytes  Int
+  visibility FileVisibility @default(public)
+  purpose    FilePurpose
+  createdAt  DateTime       @default(now())
+  owner      User           @relation(fields: [ownerId], references: [id])
+  sertifikat Sertifikat[]
+
+  @@index([ownerId, purpose])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorId     String?
+  actorRole   Role?
+  aksi        String
+  entityType  String
+  entityId    String
+  beforeState Json?
+  afterState  Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model SkillNode {
+  id                   String                @id @default(uuid())
+  nama                 String
+  parentSkillId        String?
+  examContextTags      String[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  contents             Content[]
+  events               Event[]
+  learningStyleSurveys LearningStyleSurvey[]
+  questions            Question[]
+  parentSkill          SkillNode?            @relation("SkillHierarchy", fields: [parentSkillId], references: [id])
+  children             SkillNode[]           @relation("SkillHierarchy")
+  submissions          Submission[]
+  talentCareerMappings TalentCareerMapping[]
+  talentSummaries      TalentSummaryCache[]
+
+  @@index([parentSkillId])
+}
+
+model Event {
+  id                   String                @id @default(uuid())
+  nama                 String
+  tipe                 String
+  mode                 EventMode
+  jenjang              String
+  skillNodeId          String
+  jadwal               DateTime?
+  syaratLolos          String?
+  biaya                Decimal?              @db.Decimal(12, 2)
+  reward               String?
+  grupWaLink           String?
+  status               EventStatus           @default(draft)
+  scoringConfig        Json                  @default("{\"benar\": 10, \"salah\": 0, \"kosong\": 0}")
+  kuotaMinimum         Int?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  skillNode            SkillNode             @relation(fields: [skillNodeId], references: [id])
+  registrations        EventRegistration[]
+  rounds               EventRound[]
+  leaderboardSnapshots LeaderboardSnapshot[]
+
+  @@index([skillNodeId])
+  @@index([status])
+}
+
+model EventRound {
+  id            String              @id @default(uuid())
+  eventId       String
+  namaBabak     String
+  tierId        String
+  isFree        Boolean             @default(false)
+  biaya         Decimal?            @db.Decimal(12, 2)
+  urutan        Int                 @default(1)
+  passingGrade  Int?
+  jadwalMulai   DateTime?
+  durasiMenit   Int
+  kriteriaLolos Json?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  isFinal       Boolean             @default(false)
+  attempts      EventAttempt[]
+  questionPool  EventQuestionPool[]
+  sessions      EventSession[]
+  event         Event               @relation(fields: [eventId], references: [id])
+  tier          TierConfig          @relation(fields: [tierId], references: [id])
+
+  @@index([eventId])
+  @@index([tierId])
+}
+
+model EventRegistration {
+  id                    String             @id @default(uuid())
+  eventId               String
+  userId                String
+  status                RegistrationStatus @default(terdaftar)
+  alamatPengiriman      String?
+  asalSekolahSaatDaftar String?
+  kelasSaatDaftar       String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  event                 Event              @relation(fields: [eventId], references: [id])
+  user                  User               @relation(fields: [userId], references: [id])
+  sertifikat            Sertifikat?
+
+  @@unique([eventId, userId])
+  @@index([userId])
+}
+
+model EventQuestionPool {
+  id           String     @id @default(uuid())
+  eventRoundId String
+  questionId   String
+  dikurasiOleh String
+  createdAt    DateTime   @default(now())
+  curator      User       @relation(fields: [dikurasiOleh], references: [id])
+  eventRound   EventRound @relation(fields: [eventRoundId], references: [id])
+  question     Question   @relation(fields: [questionId], references: [id])
+
+  @@unique([eventRoundId, questionId])
+  @@index([eventRoundId])
+}
+
+model EventAttempt {
+  id                    String        @id @default(uuid())
+  eventRoundId          String
+  userId                String
+  startedAt             DateTime      @default(now())
+  submittedAt           DateTime?
+  durasiPengerjaanDetik Int?
+  skorFinal100          Int?
+  xpDiperoleh           Int?
+  status                AttemptStatus @default(berlangsung)
+  updatedAt             DateTime      @updatedAt
+  eventRound            EventRound    @relation(fields: [eventRoundId], references: [id])
+  user                  User          @relation(fields: [userId], references: [id])
+  submissions           Submission[]
+  gelar                 String?
+
+  @@index([eventRoundId, userId])
+  @@index([userId, status])
+}
+
+model Submission {
+  id              String        @id @default(uuid())
+  userId          String
+  eventAttemptId  String?
+  questionId      String?
+  skillNodeId     String
+  sourceType      String
+  jawabanDipilih  Json?
+  benar           Boolean
+  createdAt       DateTime      @default(now())
+  jenisKesalahan  String?
+  waktuJawabDetik Int?
+  eventAttempt    EventAttempt? @relation(fields: [eventAttemptId], references: [id])
+  question        Question?     @relation(fields: [questionId], references: [id])
+  skillNode       SkillNode     @relation(fields: [skillNodeId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
+
+  @@index([userId, skillNodeId])
+  @@index([eventAttemptId])
+}
+
+model LeaderboardSnapshot {
+  id          String   @id @default(uuid())
+  eventId     String
+  userId      String
+  skor        Int
+  ranking     Int
+  generatedAt DateTime @default(now())
+  event       Event    @relation(fields: [eventId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([eventId, ranking])
+}
+
+model Sertifikat {
+  id                  String            @id @default(uuid())
+  eventRegistrationId String            @unique
+  nomorSertifikat     String            @unique
+  fileAssetId         String?
+  urlFile             String?
+  issuedAt            DateTime          @default(now())
+  eventRegistration   EventRegistration @relation(fields: [eventRegistrationId], references: [id])
+  fileAsset           FileAsset?        @relation(fields: [fileAssetId], references: [id])
+}
+
+model TierConfig {
+  id            String       @id @default(uuid())
+  nama          String       @unique
+  xpMultiplier  Decimal      @db.Decimal(4, 2)
+  xpBaseDefault Int
+  eventRounds   EventRound[]
+  questions     Question[]
+}
+
+model Question {
+  id                 String              @id @default(uuid())
+  contentChapterId   String?
+  skillNodeId        String
+  tierId             String
+  illustrationUrl    String?
+  questionType       ContentType
+  questionText       String?
+  questionImageUrl   String?
+  poinBenar          Int                 @default(10)
+  statusModerasi     ModerationStatus    @default(menunggu)
+  deletedAt          DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  createdBy          String?
+  eventQuestionPools EventQuestionPool[]
+  contentChapter     ContentChapter?     @relation(fields: [contentChapterId], references: [id])
+  skillNode          SkillNode           @relation(fields: [skillNodeId], references: [id])
+  tier               TierConfig          @relation(fields: [tierId], references: [id])
+  options            QuestionOption[]
+  submissions        Submission[]
+
+  @@index([skillNodeId, tierId])
+  @@index([statusModerasi])
+}
+
+model QuestionOption {
+  id         String      @id @default(uuid())
+  questionId String
+  urutan     String
+  tipe       ContentType
+  konten     String
+  isCorrect  Boolean     @default(false)
+  question   Question    @relation(fields: [questionId], references: [id])
+
+  @@index([questionId])
+}
+
+model TutorProfile {
+  id                        String                  @id @default(uuid())
+  userId                    String                  @unique
+  namaLengkap               String
+  jenjangPendidikanTerakhir String
+  dokumenIjazahUrl          String?
+  dokumenIjazahFileAssetId  String?
+  dokumenKtpUrl             String?
+  dokumenKtpFileAssetId     String?
+  statusVerifikasi          TutorVerificationStatus @default(pending)
+  diverifikasiOleh          String?
+  verifiedAt                DateTime?
+  catatanVerifikasi         String?
+  aksesJenjangKonten        String[]
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
+  verifier                  User?                   @relation("TutorVerifier", fields: [diverifikasiOleh], references: [id])
+  user                      User                    @relation(fields: [userId], references: [id])
+  nomorKontak               String?
+  dokumenCvFileAssetId      String?
+  infoRekening              String?
+  nomorRekening             String?
+}
+
+
+
+model RiasecMapping {
+  id           String   @id @default(uuid())
+  kombinasi    String   @unique
+  saranJurusan String
+  saranKarir   String
+  createdAt    DateTime @default(now())
+}
+
+model Content {
+  id                   String           @id @default(uuid())
+  ownerId              String
+  judul                String?
+  tipe                 String
+  skillNodeId          String
+  statusModerasi       ModerationStatus @default(menunggu)
+  deletedAt            DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  owner                User             @relation(fields: [ownerId], references: [id])
+  skillNode            SkillNode        @relation(fields: [skillNodeId], references: [id])
+  chapters             ContentChapter[]
+  comments             ContentComment[]
+  pricing              ContentPricing[]
+  ratings              ContentRating[]
+  royalties            RoyaltyLedger[]
+  deskripsi            String?
+  thumbnailFileAssetId String?
+  deleteRequestedAt    DateTime?
+
+  @@index([ownerId])
+  @@index([statusModerasi])
+}
+
+model ContentChapter {
+  id                 String  @id @default(uuid())
+  contentId          String
+  judul              String
+  urutan             Int
+  isFree             Boolean @default(false)
+  tipe               String  @default("latihan_soal")
+  materiFileAssetId  String?
+  previewFileAssetId String?
+  videoUrl           String?
+
+  content              Content         @relation(fields: [contentId], references: [id])
+  questions            Question[]
+  access               ContentAccess[]
+  thumbnailFileAssetId String?
+
+  @@index([contentId])
+}
+
+model ContentPricing {
+  id          String  @id @default(uuid())
+  contentId   String
+  durasiBulan Int
+  harga       Decimal @db.Decimal(12, 2)
+  content     Content @relation(fields: [contentId], references: [id])
+  paket       String? // 'video' | 'materi' | 'bundle' | null (null = harga tunggal, modul tanpa video)
+
+  @@index([contentId])
+}
+
+model RoyaltyLedger {
+  id                  String   @id @default(uuid())
+  contentId           String
+  tutorId             String
+  studentId           String
+  amount              Decimal  @db.Decimal(12, 2)
+  tipe                String
+  splitPlatformPersen Int      @default(30)
+  splitKreatorPersen  Int      @default(70)
+  payoutId            String?
+  createdAt           DateTime @default(now())
+  content             Content  @relation(fields: [contentId], references: [id])
+
+  @@index([tutorId])
+  @@index([contentId])
+}
+
+model ContentAccess {
+  id               String          @id @default(uuid())
+  userId           String
+  contentChapterId String?
+  contentId        String?
+  purchasedAt      DateTime        @default(now())
+  expiresAt        DateTime?
+  sumber           AksesSumber
+  contentChapter   ContentChapter? @relation(fields: [contentChapterId], references: [id])
+  user             User            @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model ContentRating {
+  id        String   @id @default(uuid())
+  contentId String
+  userId    String
+  bintang   Int
+  createdAt DateTime @default(now())
+  content   Content  @relation(fields: [contentId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([contentId, userId])
+}
+
+model ContentComment {
+  id              String           @id @default(uuid())
+  contentId       String
+  userId          String
+  parentCommentId String?
+  isi             String
+  createdAt       DateTime         @default(now())
+  content         Content          @relation(fields: [contentId], references: [id])
+  parentComment   ContentComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies         ContentComment[] @relation("CommentReplies")
+  user            User             @relation(fields: [userId], references: [id])
+
+  @@index([contentId])
+}
+
+model Payout {
+  id      String  @id @default(uuid())
+  tutorId String
+  jumlah  Decimal @db.Decimal(12, 2)
+  status  String  @default("pending")
+  periode String
+
+  @@index([tutorId])
+}
+
+model Testimoni {
+  id           String @id @default(uuid())
+  tutorId      String
+  studentId    String
+  isi          String
+  submissionId String
+}
+
+model Transaction {
+  id               String            @id @default(uuid())
+  userId           String
+  targetType       String
+  targetId         String
+  amount           Decimal           @db.Decimal(12, 2)
+  kodeUnik         Int?
+  metode           String            @default("qris")
+  status           TransactionStatus @default(pending)
+  qrisRef          String?
+  paidAt           DateTime?
+  createdAt        DateTime          @default(now())
+  buktiFileAssetId String?
+  user             User              @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([targetType, targetId])
+}
+
+model ScholarshipProgram {
+  id           String                   @id @default(uuid())
+  nama         String
+  tipe         String
+  kriteria     String?
+  kuota        Int?
+  status       String                   @default("aktif")
+  deadlineAt   DateTime?
+  applications ScholarshipApplication[]
+}
+
+model ScholarshipApplication {
+  id               String             @id @default(uuid())
+  programId        String
+  userId           String
+  dokumenPendukung String[]
+  status           ScholarshipStatus  @default(pending)
+  diverifikasiOleh String?
+  verifiedAt       DateTime?
+  catatan          String?
+  reminderSentAt   DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  program          ScholarshipProgram @relation(fields: [programId], references: [id])
+  user             User               @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model TalentSummaryCache {
+  id             String    @id @default(uuid())
+  userId         String
+  skillNodeId    String
+  akurasi        Decimal   @db.Decimal(5, 2)
+  totalSoal      Int
+  ranking        Int?
+  lastComputedAt DateTime  @default(now())
+  skillNode      SkillNode @relation(fields: [skillNodeId], references: [id])
+  user           User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, skillNodeId])
+  @@index([userId])
+}
+
+model TalentCareerMapping {
+  id           String    @id @default(uuid())
+  skillNodeId  String
+  saranJurusan String[]
+  saranKarier  String[]
+  skillNode    SkillNode @relation(fields: [skillNodeId], references: [id])
+
+  @@index([skillNodeId])
+}
+
+model LearningStyleSurvey {
+  id              String           @id @default(uuid())
+  userId          String
+  skillNodeId     String
+  suka            Boolean
+  alasanTidakSuka AlasanTidakSuka?
+  preferensiGaya  PreferensiGaya?
+  createdAt       DateTime         @default(now())
+  skillNode       SkillNode        @relation(fields: [skillNodeId], references: [id])
+  user            User             @relation(fields: [userId], references: [id])
+
+  @@index([userId, skillNodeId])
+}
+
+model StudySession {
+  id                  String    @id @default(uuid())
+  userId              String
+  skillNodeId         String?
+  mode                String    @default("santai_fokus")
+  presetDipilih       String?
+  startedAt           DateTime  @default(now())
+  endedAt             DateTime?
+  jumlahSiklusSelesai Int       @default(0)
+  targetSiklus        Int?
+  user                User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model PomodoroSettings {
+  id                            String @id @default(uuid())
+  siklusSebelumIstirahatPanjang Int    @default(3)
+  durasiIstirahatPanjangMenit   Int    @default(15)
+}
+
+model Announcement {
+  id            String    @id @default(uuid())
+  judul         String
+  isi           String
+  targetRole    Role[]
+  targetJenjang String[]
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  expiresAt     DateTime?
+
+  @@index([expiresAt])
+}
+
+model PsychTestQuestion {
+  id            String            @id @default(uuid())
+  teks          String
+  allowMultiple Boolean           @default(false)
+  urutan        Int
+  options       PsychTestOption[]
+}
+
+model PsychTestOption {
+  id         String            @id @default(uuid())
+  questionId String
+  teks       String
+  bobot      Json
+  question   PsychTestQuestion @relation(fields: [questionId], references: [id])
+
+  @@index([questionId])
+}
+
+model PsychTestResult {
+  id          String   @id @default(uuid())
+  userId      String
+  user     User     @relation(fields: [userId], references: [id])
+  jawaban     Json
+  skorTrait   Json
+  rekomendasi Json?
+  createdAt   DateTime @default(now())
+  tipeTes String @default("gratis")
+  laporanKomprehensif Json?
+
+  @@index([userId])
+}
+
+model PsychTestSetting {
+  id    String  @id @default(uuid())
+  harga Decimal @default(0) @db.Decimal(12, 2)
+}
+
+model PsychTestAccess {
+  id        String   @id @default(uuid())
+  userId    String
+  dipakai   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model EventSession {
+  id           String                   @id @default(uuid())
+  eventRoundId String
+  waktuMulai   DateTime
+  waktuSelesai DateTime
+  kuota        Int
+  createdAt    DateTime                 @default(now())
+  eventRound   EventRound               @relation(fields: [eventRoundId], references: [id])
+  assignments  EventSessionAssignment[]
+
+  @@index([eventRoundId])
+}
+
+model Berita {
+  id                String   @id @default(uuid())
+  judul             String
+  tag               String?
+  isi               String
+  gambarFileAssetId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+model LandingSettings {
+  id             String   @id @default("singleton")
+  heroImageId    String?
+  testImageId    String?
+  galleryImageId String?
+  updatedAt      DateTime @updatedAt
+}
+
+model EventSessionAssignment {
+  id             String       @id @default(uuid())
+  eventSessionId String
+  userId         String
+  createdAt      DateTime     @default(now())
+  eventSession   EventSession @relation(fields: [eventSessionId], references: [id])
+
+  @@unique([eventSessionId, userId])
+  @@index([userId])
+}
 
 enum Role {
   siswa
@@ -30,117 +808,11 @@ enum Role {
   admin
 }
 
-model School {
-  id           String    @id @default(uuid())
-  npsn         String?   @unique
-  nama         String
-  jenjang      String[]           // SD/SMP/SMA yang dinaungi sekolah ini
-  alamat       String?
-  picUserId    String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  pic          User?     @relation("SchoolPIC", fields: [picUserId], references: [id])
-  students     User[]    @relation("StudentSchool")
-
-  @@index([npsn])
-}
-
-model User {
-  id              String    @id @default(uuid())
-  nama            String
-  role            Role
-  adminScope      String[]  @default([])   // relevan hanya kalau role=admin, mis. ["kurasi_soal","verifikasi_tutor","verifikasi_beasiswa"]
-  kontak          String    @unique          // email atau nomor WA, dipakai sbg identitas login
-  schoolId        String?
-  consentWa       Boolean   @default(false)
-  consentData     Boolean   @default(false)
-  consentGivenAt  DateTime?
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  school                    School?             @relation("StudentSchool", fields: [schoolId], references: [id])
-  schoolAsPIC               School[]            @relation("SchoolPIC")
-  authCredential            AuthCredential?
-  refreshTokens             RefreshToken[]
-  parentLinks               ParentChildLink[]   @relation("ParentSide")
-  childLinks                ParentChildLink[]   @relation("ChildSide")
-  tutorProfile              TutorProfile?
-  tutorVerifications        TutorProfile[]           @relation("TutorVerifier")
-  fileAssets                FileAsset[]
-  notificationLogs          NotificationLog[]
-  auditLogs                 AuditLog[]
-  eventRegistrations        EventRegistration[]
-  curatedQuestionPools      EventQuestionPool[]
-  eventAttempts             EventAttempt[]
-  submissions               Submission[]
-  leaderboardSnapshots      LeaderboardSnapshot[]
-  contentAccess             ContentAccess[]
-  contentRatings            ContentRating[]
-  contentComments           ContentComment[]
-  transactions              Transaction[]
-  scholarshipApplications   ScholarshipApplication[]
-  talentSummaries           TalentSummaryCache[]
-  learningStyleSurveys      LearningStyleSurvey[]
-  studySessions             StudySession[]
-
-  @@index([role])
-  @@index([schoolId])
-}
-
-model AuthCredential {
-  id            String    @id @default(uuid())
-  userId        String    @unique
-  passwordHash  String?             // null kalau login murni via OAuth
-  provider      String    @default("password")  // password / google / dst
-  providerRef   String?
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  user          User      @relation(fields: [userId], references: [id])
-}
-
-model RefreshToken {
-  id          String    @id @default(uuid())
-  userId      String
-  tokenHash   String    @unique
-  expiresAt   DateTime
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
-
-  user        User      @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-}
-
 enum LinkStatus {
   pending
   approved
   rejected
 }
-
-model ParentChildLink {
-  id           String     @id @default(uuid())
-  parentId     String
-  childId      String
-  status       LinkStatus @default(pending)
-  verifiedBy   String?              // biasanya diverifikasi oleh anak sendiri, atau admin
-  verifiedAt   DateTime?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  parent       User       @relation("ParentSide", fields: [parentId], references: [id])
-  child        User       @relation("ChildSide", fields: [childId], references: [id])
-
-  @@unique([parentId, childId])
-  @@index([childId])
-}
-
-// ============================================================
-// 1. DOMAIN BARU — NOTIFICATION SERVICE (v0.4 §3)
-// ============================================================
 
 enum NotifChannel {
   whatsapp
@@ -154,39 +826,6 @@ enum NotifStatus {
   failed
 }
 
-model NotificationTemplate {
-  id           String       @id @default(uuid())
-  kode         String       @unique   // mis. "beasiswa_reminder_h7", "event_hasil_terbit"
-  channel      NotifChannel
-  isiTemplate  String                 // mendukung placeholder {{nama}}, {{tanggal}}, dst
-  aktif        Boolean      @default(true)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-}
-
-model NotificationLog {
-  id            String       @id @default(uuid())
-  userId        String
-  templateKode  String
-  channel       NotifChannel
-  refType       String?      // nama tabel sumber, mis. "scholarship_application"
-  refId         String?
-  payload       Json?
-  status        NotifStatus  @default(pending)
-  errorMessage  String?
-  sentAt        DateTime?
-  createdAt     DateTime     @default(now())
-
-  user          User         @relation(fields: [userId], references: [id])
-
-  @@index([userId, status])
-  @@index([refType, refId])
-}
-
-// ============================================================
-// 2. DOMAIN BARU — FILE STORAGE (v0.4 §4)
-// ============================================================
-
 enum FileVisibility {
   public
   private
@@ -198,74 +837,35 @@ enum FilePurpose {
   sertifikat
   ktp
   ijazah
+  cv
   foto_profil
   thumbnail_konten
   dokumen_beasiswa
+  materi_konten
+  qris_admin
+  bukti_pembukuan
+  berita_gambar
+  landing_image
 }
 
-model FileAsset {
-  id           String         @id @default(uuid())
-  ownerId      String
-  bucket       String
-  path         String
-  mimeType     String
-  sizeBytes    Int
-  visibility   FileVisibility @default(public)
-  purpose      FilePurpose
-  createdAt    DateTime       @default(now())
-
-  owner        User           @relation(fields: [ownerId], references: [id])
-  sertifikat   Sertifikat[]
-
-  @@index([ownerId, purpose])
+model PaymentSettings {
+  id              String   @id @default(uuid())
+  qrisFileAssetId String?
+  updatedAt       DateTime @updatedAt
 }
 
-// ============================================================
-// 3. DOMAIN BARU — AUDIT LOG (v0.4 §5)
-// ============================================================
-
-model AuditLog {
-  id            String   @id @default(uuid())
-  actorId       String?
-  actorRole     Role?
-  aksi          String            // mis. "kurasi_soal", "ubah_scoring_config", "verifikasi_tutor"
-  entityType    String            // nama tabel/model yang terdampak
-  entityId      String
-  beforeState   Json?
-  afterState    Json?
-  ipAddress     String?
-  createdAt     DateTime @default(now())
-
-  actor         User?    @relation(fields: [actorId], references: [id])
-
-  @@index([entityType, entityId])
-  @@index([actorId])
-  @@index([createdAt])
-}
-
-// ============================================================
-// 4. SKEMA GENERIK LINTAS MODUL (dari v0.3, direvisi)
-// ============================================================
-
-model SkillNode {
+model LedgerEntry {
   id               String   @id @default(uuid())
-  nama             String
-  parentSkillId    String?
-  examContextTags  String[]
+  tanggal          DateTime @default(now())
+  keterangan       String
+  tipe             String
+  jumlah           Decimal  @db.Decimal(12, 2)
+  buktiFileAssetId String?
+  createdBy        String
   createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  kodeAkun         String?
 
-  parentSkill      SkillNode?  @relation("SkillHierarchy", fields: [parentSkillId], references: [id])
-  children         SkillNode[] @relation("SkillHierarchy")
-  events                 Event[]
-  questions              Question[]
-  contents               Content[]
-  submissions            Submission[]
-  talentSummaries        TalentSummaryCache[]
-  talentCareerMappings   TalentCareerMapping[]
-  learningStyleSurveys   LearningStyleSurvey[]
-
-  @@index([parentSkillId])
+  @@index([tanggal])
 }
 
 enum EventMode {
@@ -281,88 +881,10 @@ enum EventStatus {
   dibatalkan
 }
 
-model Event {
-  id             String      @id @default(uuid())
-  nama           String
-  tipe           String
-  mode           EventMode
-  jenjang        String
-  skillNodeId    String
-  jadwal         DateTime?
-  syaratLolos    String?
-  biaya          Decimal?    @db.Decimal(12, 2)
-  reward         String?
-  status         EventStatus @default(draft)
-  scoringConfig  Json        @default("{\"benar\": 10, \"salah\": 0, \"kosong\": 0}")
-  kuotaMinimum   Int?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-
-  skillNode      SkillNode        @relation(fields: [skillNodeId], references: [id])
-  rounds         EventRound[]
-  registrations  EventRegistration[]
-  leaderboardSnapshots LeaderboardSnapshot[]
-
-  @@index([skillNodeId])
-  @@index([status])
-}
-
-model EventRound {
-  id             String    @id @default(uuid())
-  eventId        String
-  namaBabak      String
-  tierId         String
-  isFree         Boolean   @default(false)
-  jadwalMulai    DateTime?
-  durasiMenit    Int
-  kriteriaLolos  Json?     // { metode: "top_n", n: 50, urutan_ranking: [...] }
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  event          Event               @relation(fields: [eventId], references: [id])
-  tier           TierConfig          @relation(fields: [tierId], references: [id])
-  questionPool   EventQuestionPool[]
-  attempts       EventAttempt[]
-
-  @@index([eventId])
-  @@index([tierId])
-}
-
 enum RegistrationStatus {
   terdaftar
   menunggu_pembayaran
   batal
-}
-
-model EventRegistration {
-  id        String              @id @default(uuid())
-  eventId   String
-  userId    String
-  status    RegistrationStatus  @default(terdaftar)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
-
-  event     Event  @relation(fields: [eventId], references: [id])
-  user      User   @relation(fields: [userId], references: [id])
-  sertifikat Sertifikat?
-
-  @@unique([eventId, userId])
-  @@index([userId])
-}
-
-model EventQuestionPool {
-  id             String   @id @default(uuid())
-  eventRoundId   String
-  questionId     String
-  dikurasiOleh   String
-  createdAt      DateTime @default(now())
-
-  eventRound     EventRound @relation(fields: [eventRoundId], references: [id])
-  question       Question   @relation(fields: [questionId], references: [id])
-  curator        User       @relation(fields: [dikurasiOleh], references: [id])
-
-  @@unique([eventRoundId, questionId])
-  @@index([eventRoundId])
 }
 
 enum AttemptStatus {
@@ -371,88 +893,6 @@ enum AttemptStatus {
   lolos
   gugur
 }
-
-model EventAttempt {
-  id                     String        @id @default(uuid())
-  eventRoundId           String
-  userId                 String
-  startedAt              DateTime      @default(now())
-  submittedAt            DateTime?
-  durasiPengerjaanDetik  Int?
-  skorFinal100           Int?
-  xpDiperoleh            Int?
-  status                 AttemptStatus @default(berlangsung)
-  updatedAt              DateTime      @updatedAt
-
-  eventRound             EventRound    @relation(fields: [eventRoundId], references: [id])
-  user                   User          @relation(fields: [userId], references: [id])
-  submissions            Submission[]
-
-  @@index([eventRoundId, userId])
-  @@index([userId, status])
-}
-
-model Submission {
-  id             String   @id @default(uuid())
-  userId         String
-  eventAttemptId String?
-  questionId     String?
-  skillNodeId    String
-  sourceType     String   // latihan / event / marketplace
-  jawabanDipilih Json?
-  benar          Boolean
-  waktuJawabDetik Int?     // durasi pengerjaan soal ini dalam detik — bahan analisis kecepatan/"working memory" (Engine 2 & 10)
-  jenisKesalahan  String?  // kategori kesalahan bebas, mis. "salah_konsep" / "salah_hitung" / "kehabisan_waktu" (Engine 10 — AI Mentor)
-  createdAt      DateTime @default(now())
-
-  user           User          @relation(fields: [userId], references: [id])
-  eventAttempt   EventAttempt? @relation(fields: [eventAttemptId], references: [id])
-  question       Question?     @relation(fields: [questionId], references: [id])
-  skillNode      SkillNode     @relation(fields: [skillNodeId], references: [id])
-
-  @@index([userId, skillNodeId])      // dipakai talent mapping (v0.3 §10.2)
-  @@index([eventAttemptId])
-}
-
-model LeaderboardSnapshot {
-  id          String   @id @default(uuid())
-  eventId     String
-  userId      String
-  skor        Int
-  ranking     Int
-  generatedAt DateTime @default(now())
-
-  event       Event    @relation(fields: [eventId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
-
-  @@index([eventId, ranking])
-}
-
-model Sertifikat {
-  id                  String   @id @default(uuid())
-  eventRegistrationId String   @unique
-  nomorSertifikat     String   @unique
-  fileAssetId         String?
-  urlFile             String?
-  issuedAt            DateTime @default(now())
-
-  eventRegistration   EventRegistration @relation(fields: [eventRegistrationId], references: [id])
-  fileAsset           FileAsset?        @relation(fields: [fileAssetId], references: [id])
-}
-
-model TierConfig {
-  id            String  @id @default(uuid())
-  nama          String  @unique // beginner / intermediate / expert
-  xpMultiplier  Decimal @db.Decimal(4, 2)
-  xpBaseDefault Int
-
-  eventRounds   EventRound[]
-  questions     Question[]
-}
-
-// ============================================================
-// 5. BANK SOAL (dari v0.3, direvisi)
-// ============================================================
 
 enum ContentType {
   teks
@@ -465,212 +905,16 @@ enum ModerationStatus {
   ditolak
 }
 
-model Question {
-  id                 String            @id @default(uuid())
-  contentChapterId   String?
-  skillNodeId        String
-  tierId             String
-  illustrationUrl    String?
-  questionType       ContentType
-  questionText       String?
-  questionImageUrl   String?
-  poinBenar          Int               @default(10)
-  statusModerasi     ModerationStatus  @default(menunggu)
-  deletedAt          DateTime?         // soft delete — riwayat direkam di AuditLog sebelum "hilang"
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-
-  contentChapter     ContentChapter?    @relation(fields: [contentChapterId], references: [id])
-  skillNode          SkillNode          @relation(fields: [skillNodeId], references: [id])
-  tier               TierConfig         @relation(fields: [tierId], references: [id])
-  options            QuestionOption[]
-  eventQuestionPools EventQuestionPool[]
-  submissions        Submission[]
-
-  @@index([skillNodeId, tierId])
-  @@index([statusModerasi])
-}
-
-model QuestionOption {
-  id         String      @id @default(uuid())
-  questionId String
-  urutan     String      // A/B/C/D...
-  tipe       ContentType
-  konten     String
-  isCorrect  Boolean     @default(false)
-
-  question   Question    @relation(fields: [questionId], references: [id])
-
-  @@index([questionId])
-}
-
-// ============================================================
-// 6. TUTOR / CONTENT / ROYALTI (dari v0.3, direvisi)
-// ============================================================
-
 enum TutorVerificationStatus {
   pending
   disetujui
   ditolak
 }
 
-model TutorProfile {
-  id                        String                   @id @default(uuid())
-  userId                    String                   @unique
-  namaLengkap               String
-  jenjangPendidikanTerakhir String                    // SMA/SMK/D3/S1/S2
-  dokumenIjazahUrl          String?
-  dokumenIjazahFileAssetId  String?
-  dokumenKtpUrl             String?
-  dokumenKtpFileAssetId     String?
-  statusVerifikasi          TutorVerificationStatus   @default(pending)
-  diverifikasiOleh          String?
-  verifiedAt                DateTime?
-  catatanVerifikasi         String?
-  aksesJenjangKonten        String[]
-  createdAt                 DateTime                  @default(now())
-  updatedAt                 DateTime                  @updatedAt
-
-  user                      User       @relation(fields: [userId], references: [id])
-  verifier                  User?      @relation("TutorVerifier", fields: [diverifikasiOleh], references: [id])
-  contents                  Content[]
-}
-
-model Content {
-  id             String            @id @default(uuid())
-  ownerId        String
-  tipe           String            // soal/modul
-  skillNodeId    String
-  statusModerasi ModerationStatus  @default(menunggu)
-  deletedAt      DateTime?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-
-  owner          TutorProfile      @relation(fields: [ownerId], references: [id])
-  skillNode      SkillNode         @relation(fields: [skillNodeId], references: [id])
-  chapters       ContentChapter[]
-  pricing        ContentPricing[]
-  ratings        ContentRating[]
-  comments       ContentComment[]
-  royalties      RoyaltyLedger[]
-
-  @@index([ownerId])
-  @@index([statusModerasi])
-}
-
-model ContentChapter {
-  id        String   @id @default(uuid())
-  contentId String
-  judul     String
-  urutan    Int
-  isFree    Boolean  @default(false)
-
-  content   Content    @relation(fields: [contentId], references: [id])
-  questions Question[]
-  access    ContentAccess[]
-
-  @@index([contentId])
-}
-
-model ContentPricing {
-  id           String  @id @default(uuid())
-  contentId    String
-  durasiBulan  Int     // 3 / 6 / 12
-  harga        Decimal @db.Decimal(12, 2)
-
-  content      Content @relation(fields: [contentId], references: [id])
-
-  @@index([contentId])
-}
-
 enum AksesSumber {
   sewa
   beasiswa
 }
-
-model ContentAccess {
-  id               String      @id @default(uuid())
-  userId           String
-  contentChapterId String?
-  contentId        String?
-  purchasedAt      DateTime    @default(now())
-  expiresAt        DateTime?
-  sumber           AksesSumber
-
-  user             User            @relation(fields: [userId], references: [id])
-  contentChapter   ContentChapter? @relation(fields: [contentChapterId], references: [id])
-
-  @@index([userId])
-  @@index([expiresAt])
-}
-
-model ContentRating {
-  id        String   @id @default(uuid())
-  contentId String
-  userId    String
-  bintang   Int
-  createdAt DateTime @default(now())
-
-  content   Content  @relation(fields: [contentId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
-
-  @@unique([contentId, userId])
-}
-
-model ContentComment {
-  id              String   @id @default(uuid())
-  contentId       String
-  userId          String
-  parentCommentId String?
-  isi             String
-  createdAt       DateTime @default(now())
-
-  content         Content          @relation(fields: [contentId], references: [id])
-  user            User             @relation(fields: [userId], references: [id])
-  parentComment   ContentComment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
-  replies         ContentComment[] @relation("CommentReplies")
-
-  @@index([contentId])
-}
-
-model RoyaltyLedger {
-  id                    String   @id @default(uuid())
-  contentId             String
-  tutorId               String
-  studentId             String
-  amount                Decimal  @db.Decimal(12, 2)
-  tipe                  String   // per_akses / per_selesai
-  splitPlatformPersen   Int      @default(30)
-  splitKreatorPersen    Int      @default(70)
-  createdAt             DateTime @default(now())
-
-  content               Content  @relation(fields: [contentId], references: [id])
-
-  @@index([tutorId])
-  @@index([contentId])
-}
-
-model Payout {
-  id      String   @id @default(uuid())
-  tutorId String
-  jumlah  Decimal  @db.Decimal(12, 2)
-  status  String   @default("pending")
-  periode String
-
-  @@index([tutorId])
-}
-
-model Testimoni {
-  id           String @id @default(uuid())
-  tutorId      String
-  studentId    String
-  isi          String
-  submissionId String
-}
-
-// ============================================================
-// 7. TRANSAKSI (dari v0.3, direvisi)
-// ============================================================
 
 enum TransactionStatus {
   pending
@@ -679,94 +923,10 @@ enum TransactionStatus {
   kadaluarsa
 }
 
-model Transaction {
-  id         String            @id @default(uuid())
-  userId     String
-  targetType String            // content_chapter / event_registration
-  targetId   String
-  amount     Decimal           @db.Decimal(12, 2)
-  metode     String            @default("qris")
-  status     TransactionStatus @default(pending)
-  qrisRef    String?
-  paidAt     DateTime?
-  createdAt  DateTime          @default(now())
-
-  user       User @relation(fields: [userId], references: [id])
-
-  @@index([userId, status])
-  @@index([targetType, targetId])
-}
-
-// ============================================================
-// 8. BEASISWA (dari v0.3, direvisi)
-// ============================================================
-
 enum ScholarshipStatus {
   pending
   disetujui
   ditolak
-}
-
-model ScholarshipProgram {
-  id       String @id @default(uuid())
-  nama     String
-  tipe     String // akses_konten / dana_tunai
-  kriteria String?
-  kuota    Int?
-  status   String @default("aktif")
-
-  applications ScholarshipApplication[]
-}
-
-model ScholarshipApplication {
-  id                  String            @id @default(uuid())
-  programId           String
-  userId              String
-  dokumenPendukung    String[]
-  status              ScholarshipStatus @default(pending)
-  diverifikasiOleh    String?
-  verifiedAt          DateTime?
-  catatan             String?
-  reminderSentAt      DateTime?
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-
-  program             ScholarshipProgram @relation(fields: [programId], references: [id])
-  user                User               @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([status])
-}
-
-// ============================================================
-// 9. TALENTA & MOTIVASI (dari v0.3, direvisi)
-// ============================================================
-
-model TalentSummaryCache {
-  id              String   @id @default(uuid())
-  userId          String
-  skillNodeId     String
-  akurasi         Decimal  @db.Decimal(5, 2)
-  totalSoal       Int
-  ranking         Int?
-  lastComputedAt  DateTime @default(now())
-
-  user            User      @relation(fields: [userId], references: [id])
-  skillNode       SkillNode @relation(fields: [skillNodeId], references: [id])
-
-  @@unique([userId, skillNodeId])
-  @@index([userId])
-}
-
-model TalentCareerMapping {
-  id           String   @id @default(uuid())
-  skillNodeId  String
-  saranJurusan String[]
-  saranKarier  String[]
-
-  skillNode    SkillNode @relation(fields: [skillNodeId], references: [id])
-
-  @@index([skillNodeId])
 }
 
 enum AlasanTidakSuka {
@@ -783,56 +943,52 @@ enum PreferensiGaya {
   banyak_latihan
 }
 
-model LearningStyleSurvey {
-  id                String            @id @default(uuid())
-  userId            String
-  skillNodeId       String
-  suka              Boolean
-  alasanTidakSuka   AlasanTidakSuka?
-  preferensiGaya    PreferensiGaya?
-  createdAt         DateTime          @default(now())
-
-  user              User      @relation(fields: [userId], references: [id])
-  skillNode         SkillNode @relation(fields: [skillNodeId], references: [id])
-
-  @@index([userId, skillNodeId])
+enum JenisKelamin {
+  L
+  P
 }
 
-model StudySession {
-  id                   String    @id @default(uuid())
-  userId               String
-  skillNodeId          String?
-  mode                 String    @default("santai_fokus")
-  presetDipilih        String?   // standar_25 / ringan_10
-  startedAt            DateTime  @default(now())
-  endedAt              DateTime?
-  jumlahSiklusSelesai  Int       @default(0)
-  targetSiklus         Int?
+enum ReferralType {
+  diskon
+  cashback
+}
 
-  user                 User @relation(fields: [userId], references: [id])
+enum ReferralStatus {
+  aktif
+  selesai
+}
 
+model ReferralCode {
+  id             String          @id @default(uuid())
+  kode           String          @unique
+  tipe           ReferralType
+  ownerId        String
+  persenDiskon   Int?
+  maxUsage       Int?
+  status         ReferralStatus  @default(aktif)
+  createdAt      DateTime        @default(now())
+  usages         ReferralUsage[]
+  jumlahCashback Decimal?        @db.Decimal(12, 2)
+
+  @@index([ownerId])
+}
+
+model ReferralUsage {
+  id             String       @id @default(uuid())
+  referralCodeId String
+  userId         String
+  isOwnerUsage   Boolean      @default(false)
+  discountAmount Decimal?     @db.Decimal(12, 2)
+  createdAt      DateTime     @default(now())
+  referralCode   ReferralCode @relation(fields: [referralCodeId], references: [id])
+
+  @@unique([referralCodeId, userId])
   @@index([userId])
 }
 
-model PomodoroSettings {
-  id                             String @id @default(uuid())
-  siklusSebelumIstirahatPanjang  Int    @default(3)
-  durasiIstirahatPanjangMenit    Int    @default(15)
-}
-
-// ============================================================
-// 10. PENGUMUMAN (dari v0.3, direvisi)
-// ============================================================
-
-model Announcement {
-  id            String    @id @default(uuid())
-  judul         String
-  isi           String
-  targetRole    Role[]
-  targetJenjang String[]
-  deletedAt     DateTime?
-  createdAt     DateTime  @default(now())
-  expiresAt     DateTime?
-
-  @@index([expiresAt])
+model KodeAkunReference {
+  id        String   @id @default(uuid())
+  kode      String   @unique
+  nama      String
+  createdAt DateTime @default(now())
 }

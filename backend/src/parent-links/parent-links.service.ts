@@ -37,4 +37,28 @@ export class ParentLinksService {
       data: { status: LinkStatus.rejected, verifiedBy: childId, verifiedAt: new Date() },
     });
   }
+  
+  listMine(userId: string, role: string) {
+    if (role === 'orang_tua') {
+      return this.prisma.parentChildLink.findMany({
+        where: { parentId: userId },
+        include: { child: { select: { id: true, nama: true, kontak: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    return this.prisma.parentChildLink.findMany({
+      where: { childId: userId },
+      include: { parent: { select: { id: true, nama: true, kontak: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async assertApprovedLink(parentId: string, childId: string) {
+    const link = await this.prisma.parentChildLink.findUnique({
+      where: { parentId_childId: { parentId, childId } },
+    });
+    if (!link || link.status !== 'approved') {
+      throw new ForbiddenException('Kamu belum terhubung dengan akun anak ini');
+    }
+  }  
 }

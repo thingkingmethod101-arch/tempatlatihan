@@ -27,4 +27,14 @@ export class AuthController {
   logout(@Body() dto: RefreshDto) {
     return this.authService.logout(dto.refreshToken);
   }
+
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: { email: string }) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() dto: { token: string; newPassword: string }) {
+    return this.authService.resetPassword(dto.token, dto.newPassword);
+  }
 }
