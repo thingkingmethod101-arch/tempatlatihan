@@ -10,6 +10,7 @@ interface Breakdown {
   namaTutor: string;
   kontakTutor: string;
   infoRekening: string | null;
+  nomorRekening: string | null;
   deskripsi: string | null;
   jumlahPembeli: number;
   pembeli: Buyer[];
