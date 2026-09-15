@@ -53,6 +53,7 @@ export default function AdminQuestionsPage() {
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold mb-4">Moderasi Soal</h1>
+      {message && <p className="text-sm mb-2 text-red-600">{message}</p>}
       <div className="space-y-4">
         {questions.map((q) => (
           <div key={q.id} className="border rounded p-4">
