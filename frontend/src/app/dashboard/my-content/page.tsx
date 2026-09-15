@@ -117,51 +117,6 @@ export default function MyContentPage() {
     }
   }
 
-  function addQuestion() {
-    setQuestions((prev) => [...prev, emptyQuestion()]);
-  }
-
-  function removeQuestion(qIndex: number) {
-    setQuestions((prev) => prev.filter((_, i) => i !== qIndex));
-  }
-
-  function updateQuestion(qIndex: number, patch: Partial<QuestionDraft>) {
-    setQuestions((prev) => prev.map((q, i) => (i === qIndex ? { ...q, ...patch } : q)));
-  }
-
-  async function handleUploadQuestionImage(qIndex: number, file: File) {
-    const localPreview = URL.createObjectURL(file);
-    updateQuestion(qIndex, { previewUrl: localPreview });
-    setUploadingKey(`img-${qIndex}`);
-    try {
-      const id = await uploadFile(file, 'soal_gambar');
-      updateQuestion(qIndex, { questionImageUrl: id });
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Gagal upload gambar soal');
-    } finally {
-      setUploadingKey(null);
-    }
-  }
-
-  function updateOption(qIndex: number, optIndex: number, konten: string) {
-    setQuestions((prev) => {
-      const next = [...prev];
-      const options = [...next[qIndex].options];
-      options[optIndex] = { ...options[optIndex], konten };
-      next[qIndex] = { ...next[qIndex], options };
-      return next;
-    });
-  }
-
-  function setCorrectOption(qIndex: number, optIndex: number) {
-    setQuestions((prev) => {
-      const next = [...prev];
-      const options = next[qIndex].options.map((o, i) => ({ ...o, isCorrect: i === optIndex }));
-      next[qIndex] = { ...next[qIndex], options };
-      return next;
-    });
-  }
-
   function handleUbahJumlahBab(jumlah: number) {
     setJumlahBab(jumlah);
     setSoalBabs((prev) => {
