@@ -205,37 +205,7 @@ export default function MyContentPage() {
 
     try {
       const chapters: any[] = [];
-      let urutan = 1;      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const context = canvas.getContext('2d');
-
-      
-
-      function startEditContent(c: any) {
-        setEditingContentId(c.id);
-        setEditJudul(c.judul || '');
-        setEditDeskripsi(c.deskripsi || '');
-      }
-    
-      async function handleSaveEdit(id: string) {
-        try {
-          await apiFetch(`/contents/${id}/edit`, { method: 'PATCH', body: { judul: editJudul, deskripsi: editDeskripsi } });
-          setEditingContentId(null);
-          loadContents();
-        } catch (e) {
-          setMessage(e instanceof Error ? e.message : 'Gagal simpan perubahan');
-        }
-      }
-
-      if (!context) return null;
-
-      await page.render({ canvasContext: context, viewport }).promise;
-      return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'));
-    } catch {
-      return null;
-    }
-  }
+      let urutan = 1;
 
       if (pdfFileAssetId) {
         chapters.push({
