@@ -16,6 +16,7 @@ export default function AdminQuestionsPage() {
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   function load() {
     apiFetch('/questions')
