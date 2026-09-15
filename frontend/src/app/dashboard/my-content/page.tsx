@@ -320,7 +320,7 @@ export default function MyContentPage() {
     } catch {
       return null;
     }
-  }
+  }  
 
   return (
     <div className="max-w-2xl">
