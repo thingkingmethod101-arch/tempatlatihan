@@ -87,7 +87,7 @@ export default function EventsPage() {
       }
       setMyRegistrations((prev) => ({ ...prev, [eventId]: true }));
       setRegisterModalEventId(null);
-      setRegisterForm({ alamatPengiriman: '', asalSekolahSaatDaftar: '' });
+      setRegisterForm({ alamatPengiriman: '', asalSekolahSaatDaftar: '', kelasSaatDaftar: '' });
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Gagal daftar');
     } finally {
